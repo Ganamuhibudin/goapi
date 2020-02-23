@@ -3,11 +3,13 @@ package controllers
 import (
 	"encoding/json"
 	npq "github.com/Knetic/go-namedParameterQuery"
+	jwt "github.com/dgrijalva/jwt-go"
 	"github.com/ganamuhibudin/goapi/helpers"
 	"github.com/ganamuhibudin/goapi/models"
 	"github.com/jinzhu/gorm"
 	"github.com/kataras/iris"
 	"golang.org/x/crypto/bcrypt"
+	"time"
 )
 
 type UserController struct {
@@ -173,7 +175,85 @@ func (uc *UserController) DeleteUser(ctx iris.Context) {
 	return
 }
 
+func (uc *UserController) Login(ctx iris.Context) {
+	var loginData map[string]interface{}
+	user := &models.Users{}
+
+	errLoginData := ctx.ReadJSON(&loginData)
+	if errLoginData != nil {
+		errMsg := "Failed to read login data. Error: " + errLoginData.Error()
+		helpers.NewResponse(ctx, iris.StatusInternalServerError, errMsg)
+		return
+	}
+
+	if _, emailExist := loginData["email"]; !emailExist {
+		helpers.NewResponse(ctx, iris.StatusUnprocessableEntity, "Email is required")
+		return
+	}
+
+	if _, passwordExist := loginData["password"]; !passwordExist {
+		helpers.NewResponse(ctx, iris.StatusUnprocessableEntity, "Password is required")
+		return
+	}
+
+	password := loginData["password"].(string)
+	if password == "" {
+		helpers.NewResponse(ctx, iris.StatusUnprocessableEntity, "Password is required")
+		return
+	}
+
+	usr := uc.DB.Debug().Where("email = ? AND deleted_at is NULL", loginData["email"]).First(&user)
+	if usr.RecordNotFound() {
+		helpers.NewResponse(ctx, iris.StatusNotFound, "User not found")
+		return
+	}
+
+	// Authenticate user
+	errAuth := uc.authenticate(user, password)
+	if errAuth != nil {
+		helpers.NewResponse(ctx, iris.StatusUnauthorized, "Invalid email or password")
+		return
+	}
+
+	// Set last login
+	errUpdate := uc.DB.Debug().Model(&user).Update("last_login_at", time.Now()).Error
+	if errUpdate != nil {
+		errMsg := "Set last login failed. Error: " + errUpdate.Error()
+		helpers.NewResponse(ctx, iris.StatusInternalServerError, errMsg)
+		return
+	}
+
+	// Generate JWT Token
+	sign := jwt.New(jwt.GetSigningMethod("HS256"))
+	token, err := sign.SignedString([]byte("secret"))
+	if err != nil {
+		errMsg := "Failed to generate token. Error: " + err.Error()
+		helpers.NewResponse(ctx, iris.StatusInternalServerError, errMsg)
+		return
+	}
+
+	authData := map[string]interface{}{
+		"user": user,
+		"token": token,
+	}
+
+	helpers.NewResponse(ctx, iris.StatusOK, authData)
+	return
+}
+
+// function to hash password user
 func HashPassword(password string) (string, error) {
 	bytes, err := bcrypt.GenerateFromPassword([]byte(password), 14)
 	return string(bytes), err
+}
+
+// authenticate checks user's hashed password with plain text password from user input and compare email
+func (uc *UserController) authenticate(user *models.Users, password string) error {
+	// Compared hashed password with the plain text password
+	errCheck := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password))
+	if errCheck != nil {
+		return errCheck
+	}
+
+	return nil
 }
