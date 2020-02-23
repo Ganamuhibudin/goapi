@@ -22,7 +22,13 @@ func init() {
 		// Get user by id
 		users.Get("/{id:int}", userController.GetUser)
 
+		// Create user
+		users.Post("/create", userController.CreateUser)
+
 		// Update user by id
-		//users.Put("/{id:int}", userController.EditTemplate)
+		users.Put("/{id:int}", userController.UpdateUser)
+
+		// Delete user by id
+		users.Delete("/{id:int}", userController.DeleteUser)
 	})
 }

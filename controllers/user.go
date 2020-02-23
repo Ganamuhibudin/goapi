@@ -7,6 +7,7 @@ import (
 	"github.com/ganamuhibudin/goapi/models"
 	"github.com/jinzhu/gorm"
 	"github.com/kataras/iris"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type UserController struct {
@@ -88,4 +89,91 @@ func (uc *UserController) GetUser(ctx iris.Context) {
 	helpers.NewResponse(ctx, iris.StatusOK, users)
 
 	return
+}
+
+func (uc *UserController) CreateUser(ctx iris.Context) {
+	user := &models.Users{}
+
+	errInput := ctx.ReadJSON(&user)
+	if errInput != nil {
+		errMsg := "Failed to read user input. Error: " + errInput.Error()
+		helpers.NewResponse(ctx, iris.StatusInternalServerError, errMsg)
+		return
+	}
+
+	// Check if email already exists
+	usr := uc.DB.Debug().Where("email = ?", user.Email).First(&user)
+	if !usr.RecordNotFound() {
+		respMsg := "Email " + user.Email + " has already been used."
+		helpers.NewResponse(ctx, iris.StatusBadRequest, respMsg)
+		return
+
+	}
+
+	user.Password, _ = HashPassword(user.Password)
+
+	errCreate := uc.DB.Debug().Create(&user).Error
+	if errCreate != nil {
+		errMsg := "Failed to create user. Error: " + errCreate.Error()
+		helpers.NewResponse(ctx, iris.StatusInternalServerError, errMsg)
+		return
+	}
+
+	helpers.NewResponse(ctx, iris.StatusCreated, user)
+	return
+}
+
+func (uc *UserController) UpdateUser(ctx iris.Context) {
+	var userData map[string]interface{}
+	user := &models.Users{}
+	userID := ctx.Params().Get("id")
+
+	err := ctx.ReadJSON(&userData)
+	if err != nil {
+		errMsg := "Failed to read data. Error: " + err.Error()
+		helpers.NewResponse(ctx, iris.StatusInternalServerError, errMsg)
+		return
+	}
+
+	// Validate data exist
+	data := uc.DB.Debug().First(&user, userID)
+	if data.RecordNotFound() {
+		helpers.NewResponse(ctx, iris.StatusNotFound, "User doesn't exist")
+		return
+	}
+
+	// Update data
+	uc.DB.Model(&user).Updates(userData)
+
+	helpers.NewResponse(ctx, iris.StatusOK, user)
+	return
+}
+
+func (uc *UserController) DeleteUser(ctx iris.Context) {
+	var user models.Users
+	userID := ctx.Params().Get("id")
+
+	// Get User
+	usr := uc.DB.Debug().First(&user, userID)
+
+	if usr.RecordNotFound() {
+		helpers.NewResponse(ctx, iris.StatusNotFound, "User doesn't exist")
+		return
+	}
+
+	// Delete user
+	errDelUser := uc.DB.Debug().Delete(&user).Error
+	if errDelUser != nil {
+		errMsg := "Failed to delete user. Error: " + errDelUser.Error()
+		helpers.NewResponse(ctx, iris.StatusInternalServerError, errMsg)
+		return
+	}
+
+	helpers.NewResponse(ctx, iris.StatusOK, "Delete User Successful")
+	return
+}
+
+func HashPassword(password string) (string, error) {
+	bytes, err := bcrypt.GenerateFromPassword([]byte(password), 14)
+	return string(bytes), err
 }

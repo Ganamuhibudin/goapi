@@ -23,6 +23,8 @@ require (
 	github.com/microcosm-cc/bluemonday v1.0.2 // indirect
 	github.com/ryanuber/columnize v2.1.0+incompatible // indirect
 	github.com/shurcooL/sanitized_anchor_name v1.0.0 // indirect
-	golang.org/x/crypto v0.0.0-20200214034016-1d94cc7ab1c6 // indirect
+	golang.org/x/crypto v0.0.0-20200214034016-1d94cc7ab1c6
 	gopkg.in/yaml.v2 v2.2.8 // indirect
 )
+
+go 1.13
